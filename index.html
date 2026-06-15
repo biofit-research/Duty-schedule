@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>당직 스케줄러</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#faf9f5; --surface:#ffffff; --surface2:#f1efe8; --surface3:#e9e7df;
+    --text:#1a1a18; --text2:#5f5e5a; --text3:#888780;
+    --border:#d3d1c7; --accent:#185fa5; --accent-bg:#e6f1fb;
+    --danger:#a32d2d; --warn-bg:#faeeda; --warn-text:#854f0b;
+    --radius:12px; --radius-sm:8px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo",
+      "Malgun Gothic",sans-serif; line-height:1.6;
+  }
+  .wrap{max-width:760px; margin:0 auto; padding:2rem 1.25rem 4rem;}
+  h1{font-size:24px; font-weight:600; margin:0 0 4px;}
+  .sub{color:var(--text2); font-size:14px; margin:0 0 2rem;}
+  .card{background:var(--surface2); border-radius:var(--radius); padding:1rem 1.25rem; margin-bottom:1.25rem;}
+  .card-title{font-size:14px; font-weight:600; margin-bottom:12px;}
+  .row{display:flex; gap:8px; align-items:center;}
+  .members{display:flex; flex-direction:column; gap:8px; margin-bottom:10px;}
+  .mname{flex:0 0 84px; font-size:14px; font-weight:600;}
+  input[type=text],input[type=number]{
+    height:38px; padding:0 12px; border:1px solid var(--border); border-radius:var(--radius-sm);
+    background:var(--surface); color:var(--text); font-size:14px; font-family:inherit; width:100%;
+  }
+  input:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-bg);}
+  button{
+    height:38px; padding:0 16px; border:1px solid var(--border); border-radius:var(--radius-sm);
+    background:var(--surface); color:var(--text); font-size:14px; font-weight:500; cursor:pointer;
+    font-family:inherit; transition:background .12s;
+  }
+  button:hover{background:var(--surface3);} button:active{transform:scale(.98);}
+  .btn-primary{border:2px solid var(--accent); width:100%; margin-top:14px;}
+  .btn-del{padding:0 12px; flex:0 0 auto;}
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px;}
+  label.field{font-size:13px; color:var(--text2); display:block; margin-bottom:4px;}
+  .hint{font-size:12px; color:var(--text3); margin:8px 0 0;}
+  .check{display:flex; align-items:center; gap:8px; margin-top:12px; font-size:13px; color:var(--text2); cursor:pointer;}
+  .check input{width:auto; height:auto;}
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:10px; margin:1rem 0 1.25rem;}
+  .stat{background:var(--surface2); border-radius:var(--radius-sm); padding:10px 12px;}
+  .stat .l{font-size:13px; color:var(--text2);}
+  .stat .v{font-size:22px; font-weight:600;}
+  .stat .v small{font-size:13px; color:var(--text3); font-weight:400;}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  .tablewrap{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;}
+  thead tr{background:var(--surface2);}
+  th{text-align:left; padding:8px 12px; font-weight:600;}
+  td{padding:7px 12px; border-top:1px solid var(--border);}
+  tr.weekend{background:var(--surface2);}
+  .weekend td.dim{color:var(--danger);}
+  .duty{font-weight:600;}
+  .warn{background:var(--warn-bg); color:var(--warn-text); padding:10px 14px; border-radius:var(--radius-sm); font-size:13px; margin-bottom:8px;}
+  .hidden{display:none;}
+  .export{margin-top:1rem;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>당직 스케줄러</h1>
+  <p class="sub">구성원·휴가·규칙을 설정하면 한 달 당직표를 공평하게 생성하고 엑셀로 내보냅니다.</p>
+
+  <div class="card">
+    <div class="card-title">구성원 · 휴가</div>
+    <div id="members" class="members"></div>
+    <div class="row">
+      <input id="newName" type="text" placeholder="이름 입력" />
+      <button id="addBtn" style="white-space:nowrap;">+ 추가</button>
+    </div>
+    <p class="hint">휴가일은 날짜를 쉼표로 입력 (예: 3,4,17). 그 날은 당직에서 제외됩니다.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">규칙</div>
+    <div class="grid">
+      <div>
+        <label class="field">연 / 월</label>
+        <div class="row">
+          <input id="year" type="number" value="2026" min="2024" max="2030" />
+          <input id="month" type="number" value="6" min="1" max="12" />
+        </div>
+      </div>
+      <div>
+        <label class="field">평일 인원 / 일</label>
+        <input id="wdCount" type="number" value="1" min="1" max="10" />
+      </div>
+      <div>
+        <label class="field">주말 인원 / 일</label>
+        <input id="weCount" type="number" value="1" min="1" max="10" />
+      </div>
+    </div>
+    <label class="check"><input id="noConsec" type="checkbox" checked /> 같은 사람 연속 당직 방지</label>
+    <button id="genBtn" class="btn-primary">당직표 생성</button>
+  </div>
+
+  <div id="output"></div>
+  <div id="exportWrap" class="export hidden">
+    <button id="exportBtn" style="width:100%;">엑셀(.xlsx) 파일로 내보내기</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const state = { members: [], lastSchedule: null, lastMeta: null };
+  let nid = 0;
+  const dowNames = ['일','월','화','수','목','금','토'];
+
+  function addMember(name){ state.members.push({ id:++nid, name:name, vac:"" }); renderMembers(); }
+  ["김민준","이서연","박지후","최예린"].forEach(addMember);
+
+  function renderMembers(){
+    const c = document.getElementById('members'); c.innerHTML = '';
+    state.members.forEach(m=>{
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML =
+        '<span class="mname">'+m.name+'</span>'+
+        '<input type="text" placeholder="휴가일 (예: 3,4,17)" value="'+m.vac+'" data-vac="'+m.id+'" />'+
+        '<button class="btn-del" data-del="'+m.id+'" aria-label="삭제">삭제</button>';
+      c.appendChild(row);
+    });
+    c.querySelectorAll('[data-vac]').forEach(i=>i.addEventListener('input',e=>{
+      const m = state.members.find(x=>x.id==e.target.dataset.vac); if(m) m.vac = e.target.value;
+    }));
+    c.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',e=>{
+      state.members = state.members.filter(x=>x.id!=e.currentTarget.dataset.del); renderMembers();
+    }));
+  }
+
+  document.getElementById('addBtn').addEventListener('click',()=>{
+    const v = document.getElementById('newName').value.trim();
+    if(v){ addMember(v); document.getElementById('newName').value=''; }
+  });
+  document.getElementById('newName').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('addBtn').click(); });
+
+  function parseVac(s){ return new Set(String(s||'').split(',').map(x=>parseInt(x.trim(),10)).filter(x=>!isNaN(x))); }
+
+  function generate(){
+    const year=+document.getElementById('year').value, month=+document.getElementById('month').value;
+    const wdCount=+document.getElementById('wdCount').value, weCount=+document.getElementById('weCount').value;
+    const noConsec=document.getElementById('noConsec').checked;
+    const out=document.getElementById('output');
+
+    if(state.members.length===0){ out.innerHTML='<p style="color:var(--danger);">구성원을 추가하세요.</p>'; document.getElementById('exportWrap').classList.add('hidden'); return; }
+
+    const members=state.members.map(m=>({ name:m.name, vac:parseVac(m.vac), load:0 }));
+    const daysInMonth=new Date(year,month,0).getDate();
+    const schedule=[]; let prevNames=new Set(); let warnings=[];
+
+    for(let d=1; d<=daysInMonth; d++){
+      const dow=new Date(year,month-1,d).getDay();
+      const isWeekend=(dow===0||dow===6);
+      const need=isWeekend?weCount:wdCount;
+      const avail=members.filter(m=>!m.vac.has(d));
+      let pool=avail;
+      if(noConsec){
+        const filtered=avail.filter(m=>!prevNames.has(m.name));
+        if(filtered.length>=need) pool=filtered;
+        else if(avail.length>=need) warnings.push('⚠ '+month+'/'+d+'일: 연속 방지를 모두 지킬 수 없어 일부 인원이 연속 배정됐습니다.');
+      }
+      let pick=[];
+      if(pool.length<need && avail.length<need){
+        warnings.push('⚠ '+month+'/'+d+'일: 가능 인원('+avail.length+')이 필요 인원('+need+')보다 적습니다.');
+        pick=avail.slice();
+      } else {
+        const usePool=pool.length>=need?pool:avail;
+        const sorted=usePool.slice().sort((a,b)=> a.load-b.load || Math.random()-0.5);
+        pick=sorted.slice(0,need);
+      }
+      pick.forEach(m=>m.load++);
+      prevNames=new Set(pick.map(m=>m.name));
+      schedule.push({ d, dow, isWeekend, names: pick.map(m=>m.name) });
+    }
+
+    state.lastSchedule=schedule;
+    state.lastMeta={ year, month, members: members.map(m=>({name:m.name,load:m.load})) };
+
+    let html='';
+    [...new Set(warnings)].forEach(w=>{ html+='<div class="warn">'+w+'</div>'; });
+    html+='<div class="stats">';
+    members.forEach(m=>{ html+='<div class="stat"><div class="l">'+m.name+'</div><div class="v">'+m.load+'<small> 회</small></div></div>'; });
+    html+='</div>';
+    html+='<div class="tablewrap"><table><thead><tr><th>날짜</th><th>요일</th><th>당직</th></tr></thead><tbody>';
+    schedule.forEach(s=>{
+      html+='<tr class="'+(s.isWeekend?'weekend':'')+'"><td class="dim">'+s.d+'</td><td class="dim">'+dowNames[s.dow]+'</td><td class="duty">'+(s.names.join(', ')||'—')+'</td></tr>';
+    });
+    html+='</tbody></table></div>';
+    out.innerHTML=html;
+    document.getElementById('exportWrap').classList.remove('hidden');
+  }
+
+  document.getElementById('genBtn').addEventListener('click',generate);
+
+  document.getElementById('exportBtn').addEventListener('click',()=>{
+    if(!state.lastSchedule) return;
+    const m=state.lastMeta;
+    const sheet1=[['날짜','요일','당직자']];
+    state.lastSchedule.forEach(s=>{
+      sheet1.push([m.month+'월 '+s.d+'일', dowNames[s.dow], s.names.join(', ')]);
+    });
+    const sheet2=[['이름','총 당직횟수']];
+    m.members.forEach(x=>sheet2.push([x.name, x.load]));
+
+    const wb=XLSX.utils.book_new();
+    const ws1=XLSX.utils.aoa_to_sheet(sheet1); ws1['!cols']=[{wch:12},{wch:6},{wch:30}];
+    const ws2=XLSX.utils.aoa_to_sheet(sheet2); ws2['!cols']=[{wch:12},{wch:12}];
+    XLSX.utils.book_append_sheet(wb, ws1, '당직표');
+    XLSX.utils.book_append_sheet(wb, ws2, '당직횟수요약');
+    XLSX.writeFile(wb, m.year+'년_'+m.month+'월_당직표.xlsx');
+  });
+})();
+</script>
+</body>
+</html>
