@@ -25,8 +25,14 @@
   .card{background:var(--surface2); border-radius:var(--radius); padding:1rem 1.25rem; margin-bottom:1.25rem;}
   .card-title{font-size:14px; font-weight:600; margin-bottom:12px;}
   .row{display:flex; gap:8px; align-items:center;}
-  .members{display:flex; flex-direction:column; gap:8px; margin-bottom:10px;}
+  .members{display:flex; flex-direction:column; gap:10px; margin-bottom:10px;}
   .mname{flex:0 0 84px; font-size:14px; font-weight:600;}
+  .mrow{display:grid; grid-template-columns:84px 1fr auto; gap:8px; align-items:center;}
+  .mrow2{display:grid; grid-template-columns:84px 1fr 1fr; gap:8px; align-items:center; margin-top:-2px;}
+  .qlabel{font-size:12px; color:var(--text3); white-space:nowrap;}
+  .qfield{display:flex; align-items:center; gap:6px;}
+  .qfield input{height:34px;}
+  .mcard{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 12px; display:flex; flex-direction:column; gap:8px;}
   input[type=text],input[type=number]{
     height:38px; padding:0 12px; border:1px solid var(--border); border-radius:var(--radius-sm);
     background:var(--surface); color:var(--text); font-size:14px; font-family:inherit; width:100%;
@@ -88,16 +94,9 @@
           <input id="month" type="number" value="6" min="1" max="12" />
         </div>
       </div>
-      <div>
-        <label class="field">평일 인원 / 일</label>
-        <input id="wdCount" type="number" value="1" min="1" max="10" />
-      </div>
-      <div>
-        <label class="field">주말 인원 / 일</label>
-        <input id="weCount" type="number" value="1" min="1" max="10" />
-      </div>
     </div>
     <label class="check"><input id="noConsec" type="checkbox" checked /> 같은 사람 연속 당직 방지</label>
+    <p class="hint">하루 배정 인원은 구성원 각자에게 정한 당직 일수의 합으로 자동 결정됩니다. 평일 총합 / 주말 총합이 그 달의 평일 수 / 주말 수와 맞아야 빈자리 없이 채워집니다.</p>
     <button id="genBtn" class="btn-primary">당직표 생성</button>
   </div>
 
@@ -113,22 +112,35 @@
   let nid = 0;
   const dowNames = ['일','월','화','수','목','금','토'];
 
-  function addMember(name){ state.members.push({ id:++nid, name:name, vac:"" }); renderMembers(); }
+  function addMember(name){ state.members.push({ id:++nid, name:name, vac:"", wd:5, we:2 }); renderMembers(); }
   ["김민준","이서연","박지후","최예린"].forEach(addMember);
 
   function renderMembers(){
     const c = document.getElementById('members'); c.innerHTML = '';
     state.members.forEach(m=>{
-      const row = document.createElement('div');
-      row.className = 'row';
-      row.innerHTML =
-        '<span class="mname">'+m.name+'</span>'+
-        '<input type="text" placeholder="휴가일 (예: 3,4,17)" value="'+m.vac+'" data-vac="'+m.id+'" />'+
-        '<button class="btn-del" data-del="'+m.id+'" aria-label="삭제">삭제</button>';
-      c.appendChild(row);
+      const card = document.createElement('div');
+      card.className = 'mcard';
+      card.innerHTML =
+        '<div class="mrow">'+
+          '<span class="mname">'+m.name+'</span>'+
+          '<input type="text" placeholder="휴가일 (예: 3,4,17)" value="'+m.vac+'" data-vac="'+m.id+'" />'+
+          '<button class="btn-del" data-del="'+m.id+'" aria-label="삭제">삭제</button>'+
+        '</div>'+
+        '<div class="mrow2">'+
+          '<span></span>'+
+          '<span class="qfield"><span class="qlabel">평일 당직</span><input type="number" min="0" value="'+m.wd+'" data-wd="'+m.id+'" /></span>'+
+          '<span class="qfield"><span class="qlabel">주말 당직</span><input type="number" min="0" value="'+m.we+'" data-we="'+m.id+'" /></span>'+
+        '</div>';
+      c.appendChild(card);
     });
     c.querySelectorAll('[data-vac]').forEach(i=>i.addEventListener('input',e=>{
       const m = state.members.find(x=>x.id==e.target.dataset.vac); if(m) m.vac = e.target.value;
+    }));
+    c.querySelectorAll('[data-wd]').forEach(i=>i.addEventListener('input',e=>{
+      const m = state.members.find(x=>x.id==e.target.dataset.wd); if(m) m.wd = Math.max(0, parseInt(e.target.value,10)||0);
+    }));
+    c.querySelectorAll('[data-we]').forEach(i=>i.addEventListener('input',e=>{
+      const m = state.members.find(x=>x.id==e.target.dataset.we); if(m) m.we = Math.max(0, parseInt(e.target.value,10)||0);
     }));
     c.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',e=>{
       state.members = state.members.filter(x=>x.id!=e.currentTarget.dataset.del); renderMembers();
@@ -145,51 +157,76 @@
 
   function generate(){
     const year=+document.getElementById('year').value, month=+document.getElementById('month').value;
-    const wdCount=+document.getElementById('wdCount').value, weCount=+document.getElementById('weCount').value;
     const noConsec=document.getElementById('noConsec').checked;
     const out=document.getElementById('output');
 
     if(state.members.length===0){ out.innerHTML='<p style="color:var(--danger);">구성원을 추가하세요.</p>'; document.getElementById('exportWrap').classList.add('hidden'); return; }
 
-    const members=state.members.map(m=>({ name:m.name, vac:parseVac(m.vac), load:0 }));
+    const members=state.members.map(m=>({ name:m.name, vac:parseVac(m.vac), wd:m.wd, we:m.we, remWd:m.wd, remWe:m.we, load:0 }));
     const daysInMonth=new Date(year,month,0).getDate();
-    const schedule=[]; let prevNames=new Set(); let warnings=[];
 
+    // build day list
+    const days=[];
+    let weekdayTotal=0, weekendTotal=0;
     for(let d=1; d<=daysInMonth; d++){
       const dow=new Date(year,month-1,d).getDay();
       const isWeekend=(dow===0||dow===6);
-      const need=isWeekend?weCount:wdCount;
-      const avail=members.filter(m=>!m.vac.has(d));
-      let pool=avail;
-      if(noConsec){
-        const filtered=avail.filter(m=>!prevNames.has(m.name));
-        if(filtered.length>=need) pool=filtered;
-        else if(avail.length>=need) warnings.push('⚠ '+month+'/'+d+'일: 연속 방지를 모두 지킬 수 없어 일부 인원이 연속 배정됐습니다.');
-      }
-      let pick=[];
-      if(pool.length<need && avail.length<need){
-        warnings.push('⚠ '+month+'/'+d+'일: 가능 인원('+avail.length+')이 필요 인원('+need+')보다 적습니다.');
-        pick=avail.slice();
-      } else {
-        const usePool=pool.length>=need?pool:avail;
-        const sorted=usePool.slice().sort((a,b)=> a.load-b.load || Math.random()-0.5);
-        pick=sorted.slice(0,need);
-      }
-      pick.forEach(m=>m.load++);
-      prevNames=new Set(pick.map(m=>m.name));
-      schedule.push({ d, dow, isWeekend, names: pick.map(m=>m.name) });
+      if(isWeekend) weekendTotal++; else weekdayTotal++;
+      days.push({ d, dow, isWeekend, names:[] });
     }
 
-    state.lastSchedule=schedule;
-    state.lastMeta={ year, month, members: members.map(m=>({name:m.name,load:m.load})) };
+    const sumWd=members.reduce((a,m)=>a+m.wd,0);
+    const sumWe=members.reduce((a,m)=>a+m.we,0);
+
+    let warnings=[];
+    if(sumWd!==weekdayTotal) warnings.push('ℹ '+month+'월 평일은 '+weekdayTotal+'일인데 평일 당직 합계는 '+sumWd+'회입니다. ('+(sumWd>weekdayTotal?'하루 2명 이상 배정되거나':'빈 평일이 생기거나')+' 채우지 못할 수 있음)');
+    if(sumWe!==weekendTotal) warnings.push('ℹ '+month+'월 주말은 '+weekendTotal+'일인데 주말 당직 합계는 '+sumWe+'회입니다. ('+(sumWe>weekendTotal?'하루 2명 이상 배정되거나':'빈 주말이 생기거나')+' 채우지 못할 수 있음)');
+
+    // greedy: for each day in order, fill at least one slot using member with most remaining quota
+    // capacity per day = ceil(totalRemaining / remainingDaysOfType) so quotas spread out
+    function schedule(isWeekend){
+      const dayList=days.filter(x=>x.isWeekend===isWeekend);
+      const key=isWeekend?'remWe':'remWd';
+      let prevNames=new Set();
+      for(let i=0;i<dayList.length;i++){
+        const day=dayList[i];
+        const remainingDays=dayList.length-i;
+        const totalRem=members.reduce((a,m)=>a+m[key],0);
+        if(totalRem<=0) break;
+        // how many to place today so the rest spread evenly across remaining days
+        let need=Math.ceil(totalRem/remainingDays);
+        let cand=members.filter(m=>m[key]>0 && !m.vac.has(day.d));
+        if(noConsec){
+          const f=cand.filter(m=>!prevNames.has(m.name));
+          if(f.length>=Math.min(need,1)) cand=f.length>0?f:cand;
+        }
+        cand.sort((a,b)=> b[key]-a[key] || Math.random()-0.5);
+        const take=cand.slice(0, Math.min(need, cand.length));
+        take.forEach(m=>{ m[key]--; m.load++; day.names.push(m.name); });
+        prevNames=new Set(take.map(m=>m.name));
+        if(take.length===0 && need>0){
+          warnings.push('⚠ '+month+'/'+day.d+'일: 배정 가능한 인원이 없습니다 (휴가/할당 소진).');
+        }
+      }
+    }
+    schedule(false);
+    schedule(true);
+
+    members.forEach(m=>{
+      if(m.remWd>0) warnings.push('⚠ '+m.name+': 평일 당직 '+m.remWd+'회를 배정하지 못했습니다.');
+      if(m.remWe>0) warnings.push('⚠ '+m.name+': 주말 당직 '+m.remWe+'회를 배정하지 못했습니다.');
+    });
+
+    state.lastSchedule=days;
+    state.lastMeta={ year, month, members: members.map(m=>({name:m.name, wd:m.wd-m.remWd, we:m.we-m.remWe, load:m.load})) };
 
     let html='';
     [...new Set(warnings)].forEach(w=>{ html+='<div class="warn">'+w+'</div>'; });
     html+='<div class="stats">';
-    members.forEach(m=>{ html+='<div class="stat"><div class="l">'+m.name+'</div><div class="v">'+m.load+'<small> 회</small></div></div>'; });
+    state.lastMeta.members.forEach(m=>{ html+='<div class="stat"><div class="l">'+m.name+'</div><div class="v">'+m.load+'<small> 회 (평'+m.wd+'/주'+m.we+')</small></div></div>'; });
     html+='</div>';
     html+='<div class="tablewrap"><table><thead><tr><th>날짜</th><th>요일</th><th>당직</th></tr></thead><tbody>';
-    schedule.forEach(s=>{
+    days.forEach(s=>{
       html+='<tr class="'+(s.isWeekend?'weekend':'')+'"><td class="dim">'+s.d+'</td><td class="dim">'+dowNames[s.dow]+'</td><td class="duty">'+(s.names.join(', ')||'—')+'</td></tr>';
     });
     html+='</tbody></table></div>';
@@ -206,12 +243,12 @@
     state.lastSchedule.forEach(s=>{
       sheet1.push([m.month+'월 '+s.d+'일', dowNames[s.dow], s.names.join(', ')]);
     });
-    const sheet2=[['이름','총 당직횟수']];
-    m.members.forEach(x=>sheet2.push([x.name, x.load]));
+    const sheet2=[['이름','평일 당직','주말 당직','총 당직횟수']];
+    m.members.forEach(x=>sheet2.push([x.name, x.wd, x.we, x.load]));
 
     const wb=XLSX.utils.book_new();
     const ws1=XLSX.utils.aoa_to_sheet(sheet1); ws1['!cols']=[{wch:12},{wch:6},{wch:30}];
-    const ws2=XLSX.utils.aoa_to_sheet(sheet2); ws2['!cols']=[{wch:12},{wch:12}];
+    const ws2=XLSX.utils.aoa_to_sheet(sheet2); ws2['!cols']=[{wch:12},{wch:10},{wch:10},{wch:12}];
     XLSX.utils.book_append_sheet(wb, ws1, '당직표');
     XLSX.utils.book_append_sheet(wb, ws2, '당직횟수요약');
     XLSX.writeFile(wb, m.year+'년_'+m.month+'월_당직표.xlsx');
