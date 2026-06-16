@@ -96,7 +96,11 @@
       </div>
     </div>
     <label class="check"><input id="noConsec" type="checkbox" checked /> 같은 사람 연속 당직 방지</label>
-    <p class="hint">하루 배정 인원은 구성원 각자에게 정한 당직 일수의 합으로 자동 결정됩니다. 평일 총합 / 주말 총합이 그 달의 평일 수 / 주말 수와 맞아야 빈자리 없이 채워집니다.</p>
+    <div style="margin-top:12px;">
+      <label class="field">공휴일 (주말 규칙으로 처리)</label>
+      <input id="holidays" type="text" placeholder="공휴일 날짜 쉼표로 입력 (예: 6,25)" />
+    </div>
+    <p class="hint">하루 배정 인원은 구성원 각자에게 정한 당직 일수의 합으로 자동 결정됩니다. 공휴일로 지정한 평일은 주말 당직 규칙·할당량으로 처리됩니다. 평일 총합 / 주말 총합이 그 달의 평일 수 / 주말+공휴일 수와 맞아야 빈자리 없이 채워집니다.</p>
     <button id="genBtn" class="btn-primary">당직표 생성</button>
   </div>
 
@@ -158,6 +162,7 @@
   function generate(){
     const year=+document.getElementById('year').value, month=+document.getElementById('month').value;
     const noConsec=document.getElementById('noConsec').checked;
+    const holidays=parseVac(document.getElementById('holidays').value);
     const out=document.getElementById('output');
 
     if(state.members.length===0){ out.innerHTML='<p style="color:var(--danger);">구성원을 추가하세요.</p>'; document.getElementById('exportWrap').classList.add('hidden'); return; }
@@ -165,22 +170,23 @@
     const members=state.members.map(m=>({ name:m.name, vac:parseVac(m.vac), wd:m.wd, we:m.we, remWd:m.wd, remWe:m.we, load:0 }));
     const daysInMonth=new Date(year,month,0).getDate();
 
-    // build day list
+    // build day list — a day uses weekend rule if Sat/Sun OR a holiday
     const days=[];
     let weekdayTotal=0, weekendTotal=0;
     for(let d=1; d<=daysInMonth; d++){
       const dow=new Date(year,month-1,d).getDay();
-      const isWeekend=(dow===0||dow===6);
+      const isHoliday=holidays.has(d);
+      const isWeekend=(dow===0||dow===6||isHoliday);
       if(isWeekend) weekendTotal++; else weekdayTotal++;
-      days.push({ d, dow, isWeekend, names:[] });
+      days.push({ d, dow, isWeekend, isHoliday, names:[] });
     }
 
     const sumWd=members.reduce((a,m)=>a+m.wd,0);
     const sumWe=members.reduce((a,m)=>a+m.we,0);
 
     let warnings=[];
-    if(sumWd!==weekdayTotal) warnings.push('ℹ '+month+'월 평일은 '+weekdayTotal+'일인데 평일 당직 합계는 '+sumWd+'회입니다. ('+(sumWd>weekdayTotal?'하루 2명 이상 배정되거나':'빈 평일이 생기거나')+' 채우지 못할 수 있음)');
-    if(sumWe!==weekendTotal) warnings.push('ℹ '+month+'월 주말은 '+weekendTotal+'일인데 주말 당직 합계는 '+sumWe+'회입니다. ('+(sumWe>weekendTotal?'하루 2명 이상 배정되거나':'빈 주말이 생기거나')+' 채우지 못할 수 있음)');
+    if(sumWd!==weekdayTotal) warnings.push('ℹ '+month+'월 평일(공휴일 제외)은 '+weekdayTotal+'일인데 평일 당직 합계는 '+sumWd+'회입니다. ('+(sumWd>weekdayTotal?'하루 2명 이상 배정되거나':'빈 평일이 생기거나')+' 채우지 못할 수 있음)');
+    if(sumWe!==weekendTotal) warnings.push('ℹ '+month+'월 주말+공휴일은 '+weekendTotal+'일인데 주말 당직 합계는 '+sumWe+'회입니다. ('+(sumWe>weekendTotal?'하루 2명 이상 배정되거나':'빈 날이 생기거나')+' 채우지 못할 수 있음)');
 
     // greedy: for each day in order, fill at least one slot using member with most remaining quota
     // capacity per day = ceil(totalRemaining / remainingDaysOfType) so quotas spread out
@@ -227,7 +233,8 @@
     html+='</div>';
     html+='<div class="tablewrap"><table><thead><tr><th>날짜</th><th>요일</th><th>당직</th></tr></thead><tbody>';
     days.forEach(s=>{
-      html+='<tr class="'+(s.isWeekend?'weekend':'')+'"><td class="dim">'+s.d+'</td><td class="dim">'+dowNames[s.dow]+'</td><td class="duty">'+(s.names.join(', ')||'—')+'</td></tr>';
+      const tag=s.isHoliday?' <small style="color:var(--danger);">(공휴일)</small>':'';
+      html+='<tr class="'+(s.isWeekend?'weekend':'')+'"><td class="dim">'+s.d+'</td><td class="dim">'+dowNames[s.dow]+tag+'</td><td class="duty">'+(s.names.join(', ')||'—')+'</td></tr>';
     });
     html+='</tbody></table></div>';
     out.innerHTML=html;
@@ -241,7 +248,7 @@
     const m=state.lastMeta;
     const sheet1=[['날짜','요일','당직자']];
     state.lastSchedule.forEach(s=>{
-      sheet1.push([m.month+'월 '+s.d+'일', dowNames[s.dow], s.names.join(', ')]);
+      sheet1.push([m.month+'월 '+s.d+'일', dowNames[s.dow]+(s.isHoliday?'(공휴일)':''), s.names.join(', ')]);
     });
     const sheet2=[['이름','평일 당직','주말 당직','총 당직횟수']];
     m.members.forEach(x=>sheet2.push([x.name, x.wd, x.we, x.load]));
